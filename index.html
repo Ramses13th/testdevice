@@ -45,12 +45,31 @@
         button {
             padding: 12px 24px;
             font-size: 16px;
-            background: #4CAF50;
-            color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             margin: 10px;
+            transition: background-color 0.3s;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .start-btn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .stop-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .calibrate-btn {
+            background: #2196F3;
+            color: white;
         }
 
         #status {
@@ -79,14 +98,24 @@
             font-size: 14px;
             color: #666;
         }
+
+        #countdown {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2196F3;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Precise Shake Detector</h1>
         
-        <button id="startButton">Start Detection</button>
-        <button id="calibrateButton">Calibrate</button>
+        <button id="startButton" class="start-btn">Start Detection</button>
+        <button id="stopButton" class="stop-btn" disabled>Stop Detection</button>
+        <button id="calibrateButton" class="calibrate-btn" disabled>Calibrate</button>
+        
+        <div id="countdown" style="display: none">10</div>
         
         <div id="meter">
             <div id="fill"></div>
@@ -112,29 +141,59 @@
         const adjustedValue = document.getElementById('adjustedValue');
         const status = document.getElementById('status');
         const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
         const calibrateButton = document.getElementById('calibrateButton');
+        const countdown = document.getElementById('countdown');
 
         let lastShake = 0;
         let baselineAcceleration = 9.8;
         const smoothing = 0.8;
         let isCalibrating = false;
         let calibrationSamples = [];
+        let calibrationTimer = null;
+        let motionListener = null;
 
-        function calibrate(magnitude) {
-            if (isCalibrating) {
-                calibrationSamples.push(magnitude);
-                if (calibrationSamples.length >= 50) {
-                    baselineAcceleration = calibrationSamples.reduce((a, b) => a + b) / calibrationSamples.length;
-                    isCalibrating = false;
-                    calibrationSamples = [];
-                    status.textContent = `Calibrated! Baseline: ${baselineAcceleration.toFixed(4)}`;
+        function resetUI() {
+            fill.style.width = '0%';
+            rawValue.textContent = '0.0000';
+            adjustedValue.textContent = '0.0000';
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            calibrateButton.disabled = true;
+            countdown.style.display = 'none';
+            status.textContent = 'Ready to detect...';
+        }
+
+        function startCalibrationCountdown() {
+            let secondsLeft = 10;
+            isCalibrating = true;
+            calibrationSamples = [];
+            countdown.style.display = 'block';
+            
+            calibrationTimer = setInterval(() => {
+                secondsLeft--;
+                countdown.textContent = secondsLeft;
+                
+                if (secondsLeft <= 0) {
+                    clearInterval(calibrationTimer);
+                    finishCalibration();
                 }
+            }, 1000);
+        }
+
+        function finishCalibration() {
+            countdown.style.display = 'none';
+            if (calibrationSamples.length > 0) {
+                baselineAcceleration = calibrationSamples.reduce((a, b) => a + b) / calibrationSamples.length;
+                status.textContent = `Calibrated! Baseline: ${baselineAcceleration.toFixed(4)}`;
             }
+            isCalibrating = false;
+            calibrationSamples = [];
         }
 
         function updateShake(magnitude) {
             if (isCalibrating) {
-                calibrate(magnitude);
+                calibrationSamples.push(magnitude);
                 return;
             }
 
@@ -168,9 +227,21 @@
         }
 
         calibrateButton.addEventListener('click', function() {
-            isCalibrating = true;
-            calibrationSamples = [];
+            if (isCalibrating) return;
             status.textContent = 'Calibrating... Hold device still';
+            startCalibrationCountdown();
+        });
+
+        stopButton.addEventListener('click', function() {
+            if (motionListener) {
+                window.removeEventListener('devicemotion', motionListener);
+                motionListener = null;
+            }
+            if (calibrationTimer) {
+                clearInterval(calibrationTimer);
+                calibrationTimer = null;
+            }
+            resetUI();
         });
 
         startButton.addEventListener('click', async function() {
@@ -189,11 +260,16 @@
         });
 
         function startDetection() {
-            window.addEventListener('devicemotion', handleMotion);
-            startButton.textContent = 'Detecting...';
+            motionListener = handleMotion;
+            window.addEventListener('devicemotion', motionListener);
             startButton.disabled = true;
+            stopButton.disabled = false;
+            calibrateButton.disabled = false;
             status.textContent = 'Shake your device!';
         }
+
+        // Initial reset
+        resetUI();
     </script>
 </body>
 </html>
