@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shake Detector</title>
+    <title>Precise Shake Detector</title>
     <style>
         body {
             font-family: system-ui, sans-serif;
@@ -64,39 +64,93 @@
             color: #2196F3;
             margin: 10px 0;
         }
+
+        .values-container {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+
+        .value-box {
+            text-align: center;
+        }
+
+        .value-label {
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Shake Detector</h1>
+        <h1>Precise Shake Detector</h1>
         
         <button id="startButton">Start Detection</button>
+        <button id="calibrateButton">Calibrate</button>
         
         <div id="meter">
             <div id="fill"></div>
         </div>
         
         <div id="status">Ready to detect...</div>
-        <div class="value" id="value">0</div>
+        
+        <div class="values-container">
+            <div class="value-box">
+                <div class="value-label">Raw Acceleration</div>
+                <div class="value" id="rawValue">0.0000</div>
+            </div>
+            <div class="value-box">
+                <div class="value-label">Adjusted Movement</div>
+                <div class="value" id="adjustedValue">0.0000</div>
+            </div>
+        </div>
     </div>
 
     <script>
         const fill = document.getElementById('fill');
-        const value = document.getElementById('value');
+        const rawValue = document.getElementById('rawValue');
+        const adjustedValue = document.getElementById('adjustedValue');
         const status = document.getElementById('status');
         const startButton = document.getElementById('startButton');
+        const calibrateButton = document.getElementById('calibrateButton');
 
         let lastShake = 0;
-        const smoothing = 0.8;  // Smoothing factor (0-1)
+        let baselineAcceleration = 9.8;
+        const smoothing = 0.8;
+        let isCalibrating = false;
+        let calibrationSamples = [];
 
-        function updateShake(shakeAmount) {
-            // Smooth the shake value
-            lastShake = (shakeAmount * smoothing) + (lastShake * (1 - smoothing));
+        function calibrate(magnitude) {
+            if (isCalibrating) {
+                calibrationSamples.push(magnitude);
+                if (calibrationSamples.length >= 50) {
+                    baselineAcceleration = calibrationSamples.reduce((a, b) => a + b) / calibrationSamples.length;
+                    isCalibrating = false;
+                    calibrationSamples = [];
+                    status.textContent = `Calibrated! Baseline: ${baselineAcceleration.toFixed(4)}`;
+                }
+            }
+        }
+
+        function updateShake(magnitude) {
+            if (isCalibrating) {
+                calibrate(magnitude);
+                return;
+            }
+
+            // Show raw value
+            rawValue.textContent = magnitude.toFixed(4);
+
+            // Calculate adjusted movement (subtract baseline)
+            const adjustedMagnitude = Math.max(0, magnitude - baselineAcceleration);
+            
+            // Smooth the adjusted value
+            lastShake = (adjustedMagnitude * smoothing) + (lastShake * (1 - smoothing));
             
             // Update visuals
-            const percentage = Math.min(lastShake * 3, 100);
+            const percentage = Math.min(lastShake * 100, 100);  // Increased sensitivity
             fill.style.width = percentage + '%';
-            value.textContent = lastShake.toFixed(1);
+            adjustedValue.textContent = lastShake.toFixed(4);
         }
 
         function handleMotion(event) {
@@ -112,6 +166,12 @@
             
             updateShake(magnitude);
         }
+
+        calibrateButton.addEventListener('click', function() {
+            isCalibrating = true;
+            calibrationSamples = [];
+            status.textContent = 'Calibrating... Hold device still';
+        });
 
         startButton.addEventListener('click', async function() {
             try {
